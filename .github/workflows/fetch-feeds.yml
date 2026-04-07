@@ -1,0 +1,26 @@
+name: Fetch Feeds
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch:         # allow manual trigger
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Fetch all overdue feeds
+        run: |
+          MAX=400
+          COUNT=0
+          while [ $COUNT -lt $MAX ]; do
+            RESULT=$(curl -s -X POST https://reader.ribbonhouse.nyc/api/admin/fetch-one \
+              -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}")
+            FETCHED=$(echo "$RESULT" | jq -r '.fetched')
+            if [ "$FETCHED" = "0" ]; then
+              echo "All feeds up to date after $COUNT fetches."
+              break
+            fi
+            COUNT=$((COUNT + 1))
+          done
