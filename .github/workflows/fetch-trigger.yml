@@ -6,10 +6,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger:
+  fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - name: Trigger feed fetch
+      - name: Fetch all overdue feeds
         run: |
-          curl -sf -X POST https://reader.ribbonhouse.nyc/api/admin/trigger-fetch \
-            -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}"
+          CONCURRENCY=10
+          MAX=500
+          COUNT=0
+          while [ $COUNT -lt $MAX ]; do
+            RESULTS=$(for i in $(seq 1 $CONCURRENCY); do
+              curl -s -X POST https://reader.ribbonhouse.nyc/api/admin/fetch-one \
+                -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}" &
+            done; wait)
+            COUNT=$((COUNT + CONCURRENCY))
+            TOTAL_FETCHED=$(echo "$RESULTS" | jq -r '.fetched' | awk '{s+=$1} END {print s}')
+            if [ "$TOTAL_FETCHED" = "0" ]; then
+              echo "All feeds up to date after $COUNT calls."
+              break
+            fi
+          done
