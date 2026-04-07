@@ -7,7 +7,7 @@ import { articleRoutes } from './routes/articles'
 import { opmlRoutes } from './routes/opml'
 import { userRoutes } from './routes/users'
 import { publicRoutes } from './routes/public_view'
-import { scheduledFetch } from './lib/fetcher'
+import { scheduledFetch, fetchOneDue } from './lib/fetcher'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -30,6 +30,16 @@ app.route('/api/public', publicRoutes)
 
 // Health check
 app.get('/api/health', (c) => c.json({ ok: true }))
+
+// GitHub Actions: fetch one overdue feed per call (each call = its own CPU budget)
+app.post('/api/admin/fetch-one', async (c) => {
+  const secret = c.req.header('x-trigger-secret')
+  if (!secret || secret !== c.env.TRIGGER_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  const result = await fetchOneDue(c.env.DB)
+  return c.json(result)
+})
 
 // External cron trigger (GitHub Actions backup)
 app.post('/api/admin/trigger-fetch', async (c) => {

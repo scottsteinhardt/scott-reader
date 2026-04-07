@@ -5,7 +5,7 @@ import { countWords } from '../core/utils'
 
 const FETCH_TIMEOUT = 15000
 const FULL_CONTENT_THRESHOLD = 200 // fetch full content if article content is shorter than this
-const BATCH_SIZE = 10 // watch logs for CPU exceeded; drop back to 5 if it recurs
+const BATCH_SIZE = 3
 
 interface FetchResult {
   feedId: number
@@ -25,6 +25,26 @@ const RETENTION_DAYS = 90
  * @returns Array of fetch results for the processed batch
  */
 export async function scheduledFetch(db: D1Database): Promise<FetchResult[]> {
+  return batchFetch(db, { skipFullContent: true })
+}
+
+// Fetches exactly one overdue feed — safe for free tier CPU limits.
+// Returns { fetched: 1 } if a feed was processed, { fetched: 0 } if nothing was due.
+export async function fetchOneDue(db: D1Database): Promise<{ fetched: number; newItems: number }> {
+  const now = Math.floor(Date.now() / 1000)
+  // Atomically claim one feed by pushing next_fetch_at into the future before fetching.
+  // This prevents concurrent callers from picking the same feed.
+  const claimed = await db.prepare(`
+    UPDATE feeds SET next_fetch_at = 9999999999
+    WHERE id = (SELECT id FROM feeds WHERE next_fetch_at <= ? ORDER BY next_fetch_at ASC LIMIT 1)
+    RETURNING id, url
+  `).bind(now).first<{ id: number; url: string }>()
+  if (!claimed) return { fetched: 0, newItems: 0 }
+  const result = await fetchOneFeed(db, claimed.id, claimed.url, { skipFullContent: false })
+  return { fetched: 1, newItems: result.newItems }
+}
+
+async function batchFetch(db: D1Database, { skipFullContent = false } = {}): Promise<FetchResult[]> {
   const now = Math.floor(Date.now() / 1000)
 
   // Purge old articles once per hour (top of the hour) — skip on all other ticks
@@ -43,15 +63,15 @@ export async function scheduledFetch(db: D1Database): Promise<FetchResult[]> {
     'SELECT id, url, refresh_interval FROM feeds WHERE next_fetch_at <= ? ORDER BY next_fetch_at ASC LIMIT ?'
   ).bind(now, BATCH_SIZE).all<{ id: number; url: string; refresh_interval: number }>()
 
-  const results = await Promise.allSettled(
-    feeds.results.map(feed => fetchOneFeed(db, feed.id, feed.url))
-  )
-
-  return results.map((r, i) => {
-    const feed = feeds.results[i]!
-    if (r.status === 'fulfilled') return r.value
-    return { feedId: feed.id, url: feed.url, ok: false, newItems: 0, error: String(r.reason) }
-  })
+  const results: FetchResult[] = []
+  for (const feed of feeds.results) {
+    try {
+      results.push(await fetchOneFeed(db, feed.id, feed.url, { skipFullContent }))
+    } catch (e) {
+      results.push({ feedId: feed.id, url: feed.url, ok: false, newItems: 0, error: String(e) })
+    }
+  }
+  return results
 }
 
 /**
@@ -62,7 +82,7 @@ export async function scheduledFetch(db: D1Database): Promise<FetchResult[]> {
  * @param feedUrl - URL of the feed to fetch
  * @returns Result object with feedId, url, ok flag, and error if any
  */
-export async function fetchOneFeed(db: D1Database, feedId: number, feedUrl: string): Promise<FetchResult> {
+export async function fetchOneFeed(db: D1Database, feedId: number, feedUrl: string, { skipFullContent = false } = {}): Promise<FetchResult> {
   const now = Math.floor(Date.now() / 1000)
   try {
     const { response, finalUrl } = await fetchWithRewrites(feedUrl)
@@ -84,7 +104,7 @@ export async function fetchOneFeed(db: D1Database, feedId: number, feedUrl: stri
     await updateFeedMetadata(db, feedId, parsed, now)
     fetchFavicon(db, feedId, parsed.siteUrl || finalUrl).catch(() => {})
 
-    const newItems = await processArticles(db, feedId, parsed.items)
+    const newItems = await processArticles(db, feedId, parsed.items, { skipFullContent })
 
     return { feedId, url: feedUrl, ok: true, newItems }
   } catch (err) {
@@ -174,7 +194,7 @@ async function updateFeedMetadata(db: D1Database, feedId: number, parsed: any, n
     now, now, feedId).run()
 }
 
-async function processArticles(db: D1Database, feedId: number, items: any[]): Promise<number> {
+async function processArticles(db: D1Database, feedId: number, items: any[], { skipFullContent = false } = {}): Promise<number> {
   const subscribers = await db.prepare(
     'SELECT user_id, folder FROM user_feeds WHERE feed_id = ?'
   ).bind(feedId).all<{ user_id: number; folder: string | null }>()
@@ -200,7 +220,7 @@ async function processArticles(db: D1Database, feedId: number, items: any[]): Pr
       let fullContent: string | null = null
       let wordCount = countWords(content)
 
-      if (item.url && content.length < FULL_CONTENT_THRESHOLD) {
+      if (!skipFullContent && item.url && content.length < FULL_CONTENT_THRESHOLD) {
         const extracted = await fetchFullContent(item.url).catch(() => null)
         if (extracted) {
           fullContent = extracted.content

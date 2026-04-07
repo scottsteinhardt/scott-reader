@@ -12,15 +12,20 @@ jobs:
     steps:
       - name: Fetch all overdue feeds
         run: |
-          MAX=400
+          CONCURRENCY=10
+          MAX=500
           COUNT=0
           while [ $COUNT -lt $MAX ]; do
-            RESULT=$(curl -s -X POST https://reader.ribbonhouse.nyc/api/admin/fetch-one \
-              -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}")
-            FETCHED=$(echo "$RESULT" | jq -r '.fetched')
-            if [ "$FETCHED" = "0" ]; then
-              echo "All feeds up to date after $COUNT fetches."
+            # Fire CONCURRENCY requests in parallel, wait for all to finish
+            RESULTS=$(for i in $(seq 1 $CONCURRENCY); do
+              curl -s -X POST https://reader.ribbonhouse.nyc/api/admin/fetch-one \
+                -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}" &
+            done; wait)
+            COUNT=$((COUNT + CONCURRENCY))
+            # If all returned fetched=0 we're done
+            TOTAL_FETCHED=$(echo "$RESULTS" | jq -r '.fetched' | awk '{s+=$1} END {print s}')
+            if [ "$TOTAL_FETCHED" = "0" ]; then
+              echo "All feeds up to date after $COUNT calls."
               break
             fi
-            COUNT=$((COUNT + 1))
           done
