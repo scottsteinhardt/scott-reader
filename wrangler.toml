@@ -1,0 +1,20 @@
+name = "scott-reader"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "reader.ribbonhouse.nyc", custom_domain = true }
+]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "scott-reader"
+database_id = "12345e6a-8c28-431b-973b-9a2d79398179"
+
+[triggers]
+crons = ["* * * * *"]

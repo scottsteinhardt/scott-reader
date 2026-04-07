@@ -1,0 +1,15 @@
+name: Feed Fetch Trigger
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger feed fetch
+        run: |
+          curl -sf -X POST https://reader.ribbonhouse.nyc/api/admin/trigger-fetch \
+            -H "x-trigger-secret: ${{ secrets.TRIGGER_SECRET }}"

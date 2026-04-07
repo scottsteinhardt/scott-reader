@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Scott Reader</title>
+  <meta name="title" content="Scott Reader" />
+  <meta name="description" content="A fast, private, web-based RSS reader built by Scott Steinhardt. Features Fever API syncing and runs on a free Cloudflare architecture." />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://reader.ribbonhouse.nyc/" />
+  <meta property="og:title" content="Scott Reader" />
+  <meta property="og:description" content="A fast, private, web-based RSS reader built by Scott Steinhardt. Features Fever API syncing and runs on a free Cloudflare architecture." />
+  <meta property="og:image" content="https://reader.ribbonhouse.nyc/scottreader.jpeg" />
+
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://reader.ribbonhouse.nyc/" />
+  <meta property="twitter:title" content="Scott Reader" />
+  <meta property="twitter:description" content="A fast, private, web-based RSS reader built by Scott Steinhardt. Features Fever API syncing and runs on a free Cloudflare architecture." />
+  <meta property="twitter:image" content="https://reader.ribbonhouse.nyc/scottreader.jpeg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Metal+Mania&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="login-screen" class="screen hidden">
+      <div class="ticker-bg" id="ticker-bg" aria-hidden="true">
+        <div class="ticker-track" id="ticker-track"></div>
+      </div>
+      <div class="login-box">
+        <div class="login-title">
+          <svg class="metal-logo" viewBox="0 0 340 104" xmlns="http://www.w3.org/2000/svg" aria-label="Scott Reader">
+            <defs>
+              <filter id="grit" x="-4%" y="-8%" width="108%" height="116%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.055 0.035" numOctaves="4" seed="7" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+              </filter>
+            </defs>
+            <text x="170" y="60" text-anchor="middle"
+                  font-family="'Metal Mania', serif" font-size="46"
+                  fill="currentColor" filter="url(#grit)" letter-spacing="5">SCOTT</text>
+            <text x="170" y="84" text-anchor="middle"
+                  font-family="'Metal Mania', serif" font-size="24"
+                  fill="currentColor" filter="url(#grit)" letter-spacing="11">READER</text>
+          </svg>
+        </div>
+        <form id="login-form">
+          <div class="field">
+            <label for="login-username">Username</label>
+            <input id="login-username" type="text" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-full">Sign in</button>
+          <p id="login-error" class="error-msg hidden"></p>
+        </form>
+        <p class="login-hint hidden"><a href="#" id="show-register">Create account</a></p>
+        <p class="login-hint">Want an account? <a href="mailto:hi@scottsteinhardt.com?subject=Requesting%20Scott%20Reader%20Account&body=I%20would%20like%20a%20Scott%20Reader%20account%20please.">Just ask Scott!</a></p>
+        <p class="login-hint"><a href="#" id="show-about">About Scott Reader</a></p>
+      </div>
+    </div>
+
+    <div id="register-screen" class="screen hidden">
+      <div class="login-box">
+        <h1 class="login-title">Create account</h1>
+        <form id="register-form">
+          <div class="field">
+            <label for="reg-username">Username</label>
+            <input id="reg-username" type="text" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="reg-password">Password</label>
+            <input id="reg-password" type="password" autocomplete="new-password" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-full">Create account</button>
+          <p id="register-error" class="error-msg hidden"></p>
+        </form>
+        <p class="login-hint"><a href="#" id="show-login">Back to sign in</a></p>
+      </div>
+    </div>
+
+    <div id="main-screen" class="screen hidden">
+      <header class="mobile-header">
+        <button class="icon-btn" id="mobile-menu-btn" aria-label="Menu">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <span id="mobile-title" class="mobile-title">All articles</span>
+        <button class="icon-btn" id="mobile-refresh-btn" aria-label="Refresh">
+          <svg viewBox="0 0 24 24"><path d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115.2-6.5M20 15a9 9 0 01-15.2 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-top">
+            <div class="sidebar-search">
+              <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <input type="text" id="search-input" placeholder="Search…" autocomplete="off" />
+              <button class="search-clear hidden" id="search-clear">✕</button>
+            </div>
+          </div>
+
+          <nav class="sidebar-nav" id="sidebar-nav">
+            </nav>
+
+          <div class="sidebar-bottom">
+            <button class="sidebar-action" id="add-feed-btn">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Add feed
+            </button>
+            <button class="sidebar-action" id="manage-feeds-btn">
+              <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2v-4M9 21H5a2 2 0 01-2-2v-4m0 0h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Manage feeds
+            </button>
+            <button class="sidebar-action" id="settings-btn">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Settings
+            </button>
+            <button class="sidebar-action" id="refresh-all-btn">
+              <svg viewBox="0 0 24 24"><path d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115.2-6.5M20 15a9 9 0 01-15.2 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Refresh all
+            </button>
+            <button class="sidebar-action" id="shortcuts-btn" title="Keyboard shortcuts (?)">
+              <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Shortcuts
+            </button>
+          </div>
+        </aside>
+
+        <div class="sidebar-overlay hidden" id="sidebar-overlay"></div>
+
+        <section class="article-list-panel" id="article-list-panel">
+          <div class="panel-header">
+            <div class="panel-header-left">
+              <h2 id="panel-title">All articles</h2>
+              <span id="unread-badge" class="badge hidden"></span>
+            </div>
+            <div class="panel-header-right">
+              <button class="icon-btn" id="sort-btn" title="Toggle sort order">
+                <svg id="sort-icon-desc" viewBox="0 0 24 24"><path d="M3 4h13M3 8h9M3 12h5M17 4v16M17 20l-4-4M17 20l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg id="sort-icon-asc" class="hidden" viewBox="0 0 24 24"><path d="M3 4h13M3 8h9M3 12h5M17 20V4M17 4l-4 4M17 4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn" id="mark-all-read-btn" title="Mark all as read">
+                <svg viewBox="0 0 24 24"><path d="M2 12l5 5L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn" id="toggle-unread-btn" title="Show unread only">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="article-list" class="article-list">
+            <div class="loading-state">Loading…</div>
+          </div>
+        </section>
+
+        <main class="article-content-panel" id="article-content-panel">
+          <div id="article-content" class="article-content empty-state">
+            <div class="empty-message">
+              <svg viewBox="0 0 24 24" class="empty-icon"><path d="M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1zM8 7h8M8 11h8M8 15h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <p>Select an article to read</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div id="public-screen" class="screen hidden">
+      <div class="public-view">
+        <header class="public-header">
+          <h1 id="public-username"></h1>
+          <p>Public reading list</p>
+        </header>
+        <div id="public-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="add-feed-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>Add feed</h3>
+        <button class="modal-close" data-modal="add-feed-modal">✕</button>
+      </div>
+      <form id="add-feed-form">
+        <div class="field">
+          <label>URL <span class="label-hint">(website or feed URL)</span></label>
+          <input type="url" id="add-feed-url" placeholder="https://example.com" required />
+        </div>
+        <div class="field">
+          <label>Folder <span class="label-hint">(optional)</span></label>
+          <input type="text" id="add-feed-folder" list="folders-datalist" placeholder="e.g. Tech" />
+          <datalist id="folders-datalist"></datalist>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-modal="add-feed-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="add-feed-submit">Add feed</button>
+        </div>
+        <p id="add-feed-error" class="error-msg hidden"></p>
+      </form>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="modal-close" data-modal="settings-modal">✕</button>
+      </div>
+      <div class="settings-tabs">
+        <button class="tab-btn active" data-tab="appearance">Appearance</button>
+        <button class="tab-btn" data-tab="account">Account</button>
+        <button class="tab-btn" data-tab="filters">Filters</button>
+        <button class="tab-btn" data-tab="import-export">Import/Export</button>
+        <button class="tab-btn" data-tab="users">Users</button>
+      </div>
+      <div class="tab-content">
+        <div class="tab-pane active" id="tab-appearance">
+          <div class="field">
+            <label>Theme</label>
+            <div class="segmented-control" id="theme-control">
+              <button data-value="system" class="active">System</button>
+              <button data-value="light">Light</button>
+              <button data-value="dark">Dark</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Accent color</label>
+            <div class="color-swatches" id="accent-swatches">
+              <button class="swatch active" data-color="#2563eb" style="background:#2563eb" title="Blue"></button>
+              <button class="swatch" data-color="#7c3aed" style="background:#7c3aed" title="Purple"></button>
+              <button class="swatch" data-color="#db2777" style="background:#db2777" title="Pink"></button>
+              <button class="swatch" data-color="#dc2626" style="background:#dc2626" title="Red"></button>
+              <button class="swatch" data-color="#d97706" style="background:#d97706" title="Amber"></button>
+              <button class="swatch" data-color="#16a34a" style="background:#16a34a" title="Green"></button>
+              <button class="swatch" data-color="#0891b2" style="background:#0891b2" title="Cyan"></button>
+              <input type="color" id="custom-accent" class="swatch swatch-custom" title="Custom" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Article density</label>
+            <div class="segmented-control" id="density-control">
+              <button data-value="comfortable" class="active">Comfortable</button>
+              <button data-value="compact">Compact</button>
+              <button data-value="magazine">Magazine</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Article font</label>
+            <div class="segmented-control" id="font-family-control">
+              <button data-value="system" class="active">System</button>
+              <button data-value="serif">Serif</button>
+              <button data-value="mono">Mono</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Article size <span id="font-size-label" style="font-weight:400;color:var(--text-muted)">16px</span></label>
+            <input type="range" id="font-size-control" min="13" max="22" step="1" value="16" style="width:100%;margin-top:.35rem" />
+          </div>
+          <div class="field">
+            <label>UI size <span id="ui-size-label" style="font-weight:400;color:var(--text-muted)">14px</span></label>
+            <input type="range" id="ui-size-control" min="12" max="18" step="1" value="14" style="width:100%;margin-top:.35rem" />
+          </div>
+          <div class="field">
+            <label>Sidebar width <span id="sidebar-width-label" style="font-weight:400;color:var(--text-muted)">260px</span></label>
+            <input type="range" id="sidebar-width-control" min="200" max="380" step="10" value="260" style="width:100%;margin-top:.35rem" />
+          </div>
+          <div class="field">
+            <label>Article list width <span id="list-width-label" style="font-weight:400;color:var(--text-muted)">380px</span></label>
+            <input type="range" id="list-width-control" min="280" max="560" step="10" value="380" style="width:100%;margin-top:.35rem" />
+          </div>
+          <div class="field">
+            <label>Reading</label>
+            <div class="toggle-row">
+              <span>Confirm before marking all as read</span>
+              <label class="toggle">
+                <input type="checkbox" id="confirm-mark-read-toggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row" style="margin-top:.5rem">
+              <span>Mark as read when scrolled past</span>
+              <label class="toggle">
+                <input type="checkbox" id="scroll-mark-read-toggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="field">
+            <div class="toggle-row">
+              <span>Hide feeds with no unread</span>
+              <label class="toggle">
+                <input type="checkbox" id="hide-read-folders-toggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Public profile</label>
+            <div class="toggle-row">
+              <span>Share reading list publicly</span>
+              <label class="toggle">
+                <input type="checkbox" id="public-toggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p id="public-url" class="hint hidden"></p>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-account">
+          <p class="hint">Signed in as <strong id="account-username"></strong></p>
+          <form id="change-password-form">
+            <div class="field">
+              <label>Current password</label>
+              <input type="password" id="current-pw" autocomplete="current-password" />
+            </div>
+            <div class="field">
+              <label>New password</label>
+              <input type="password" id="new-pw" autocomplete="new-password" />
+            </div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn-primary">Change password</button>
+              <button type="button" id="logout-btn" class="btn btn-ghost">Sign out</button>
+            </div>
+            <p id="pw-change-msg" class="hidden"></p>
+          </form>
+        </div>
+
+        <div class="tab-pane" id="tab-filters">
+          <div id="filters-list"></div>
+          <button class="btn btn-outline" id="add-filter-btn">+ Add filter rule</button>
+          <div id="filter-form" class="filter-form hidden">
+            <div class="field">
+              <label>Name</label>
+              <input type="text" id="filter-name" placeholder="e.g. Hide ads" />
+            </div>
+            <div class="field">
+              <label>Match field</label>
+              <select id="filter-field">
+                <option value="title">Title</option>
+                <option value="content">Content</option>
+                <option value="author">Author</option>
+                <option value="any">Any</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Keyword</label>
+              <input type="text" id="filter-keyword" placeholder="e.g. sponsored" />
+            </div>
+            <div class="field">
+              <label>Action</label>
+              <select id="filter-action">
+                <option value="mark_read">Mark as read</option>
+                <option value="star">Star</option>
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-ghost" id="cancel-filter">Cancel</button>
+              <button type="button" class="btn btn-primary" id="save-filter">Save rule</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-import-export">
+          <div class="import-export-section">
+            <h4>Import OPML</h4>
+            <p class="hint">Import subscriptions from another RSS reader</p>
+            <label class="btn btn-outline file-label">
+              Choose OPML file
+              <input type="file" id="opml-import-input" accept=".opml,.xml" class="hidden" />
+            </label>
+            <p id="import-result" class="hidden"></p>
+          </div>
+          <div class="import-export-section">
+            <h4>Export OPML</h4>
+            <p class="hint">Download your subscriptions as OPML</p>
+            <a id="opml-export-btn" class="btn btn-outline" href="/api/opml" download>Download OPML</a>
+          </div>
+          <div class="import-export-section">
+            <h4>Fever API</h4>
+            <p class="hint">Connect Reeder, ReadKit, or any Fever-compatible app</p>
+            <div class="api-info">
+              <div class="api-row"><span>Server URL</span><code id="api-server-url"></code></div>
+              <div class="api-row"><span>Username</span><code id="api-username"></code></div>
+              <div class="api-row"><span>Password</span><em>your account password</em></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-users">
+          <div id="users-list"></div>
+          <details class="add-user-details" id="add-user-details">
+            <summary>Add user</summary>
+            <form id="add-user-form">
+              <div class="field">
+                <label>Username</label>
+                <input type="text" id="new-user-username" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label>Password</label>
+                <input type="text" id="new-user-password" autocomplete="new-password" value="correct-horse-battery-staple" />
+              </div>
+              <button type="submit" class="btn btn-primary">Create user</button>
+              <p id="add-user-error" class="error-msg hidden"></p>
+            </form>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div id="edit-feed-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>Edit feed</h3>
+        <button class="modal-close" data-modal="edit-feed-modal">✕</button>
+      </div>
+      <form id="edit-feed-form">
+        <input type="hidden" id="edit-feed-id" />
+        <div class="field">
+          <label>Feed URL</label>
+          <a id="edit-feed-url" class="feed-url-link" href="#" target="_blank" rel="noopener"></a>
+        </div>
+        <div class="field">
+          <label>Custom title</label>
+          <input type="text" id="edit-feed-title" />
+        </div>
+        <div class="field">
+          <label>Folder</label>
+          <input type="text" id="edit-feed-folder" list="folders-datalist" />
+        </div>
+        <div class="field">
+          <label>Refresh interval</label>
+          <select id="edit-feed-interval">
+            <option value="600">10 minutes</option>
+            <option value="1800" selected>30 minutes</option>
+            <option value="3600">1 hour</option>
+            <option value="7200">2 hours</option>
+            <option value="21600">6 hours</option>
+            <option value="86400">Daily</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger" id="unsubscribe-btn">Unsubscribe</button>
+          <div>
+            <button type="button" class="btn btn-ghost" data-modal="edit-feed-modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </div>
+        <p id="edit-feed-error" class="error-msg hidden"></p>
+      </form>
+    </div>
+
+    <div id="shortcuts-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>Keyboard shortcuts</h3>
+        <button class="modal-close" data-modal="shortcuts-modal">✕</button>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>j</kbd><kbd>↓</kbd></span><span>Next article</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>k</kbd><kbd>↑</kbd></span><span>Previous article</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>o</kbd><kbd>Enter</kbd></span><span>Open in browser</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>r</kbd></span><span>Toggle read/unread</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>s</kbd></span><span>Toggle star</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>u</kbd></span><span>Toggle unread filter</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>m</kbd></span><span>Mark all as read</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>R</kbd></span><span>Refresh all feeds</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>a</kbd></span><span>Add feed</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>/</kbd></span><span>Focus search</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>?</kbd></span><span>Show this help</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>Esc</kbd></span><span>Close / dismiss</span></div>
+      </div>
+    </div>
+
+    <div id="about-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>About Scott Reader</h3>
+        <button class="modal-close" data-modal="about-modal">✕</button>
+      </div>
+      <div class="about-content">
+        <p>Scott Reader is an RSS reader built by me, <a href="https://scottfromny.com" target="_blank" rel="noopener">Scott Steinhardt</a>, based on my particular specifications. After using RSS for over 21 years and thanks to the advancements of large language models, I was able to create an RSS service that works on the web, syncs using the Fever API (to mobile applications), and doesn't look horrible. Also it runs on free architecture (Cloudflare Workers and Pages) so it costs me nothing. Most importantly, I can add features whenever I want and not rely on the kindness of the few people still working on RSS apps and services.</p>
+
+        <h4>Will Scott Reader be made open source?</h4>
+        <p>Yes, and soon. I will put it on my <a href="https://github.com/scottsteinhardt" target="_blank" rel="noopener">Github</a>.</p>
+
+        <h4>Why Scott Reader?</h4>
+        <p>Because I am Scott and my friend Tom suggested the name. Also it sounds like <a href="https://en.wikipedia.org/wiki/Scott_Reeder_(bassist)" target="_blank" rel="noopener">Scott Reeder</a> who played bass on some of my favorite <a href="https://open.spotify.com/album/6O5lhr0v3ci9fMEIK5g5a9?si=VpgTsUdWRR694rWoWi2eYA" target="_blank" rel="noopener">Kyuss records</a> and produced the first <a href="https://open.spotify.com/album/5aHcAYDMZC1OWHvnTz3X0x?si=xfzfW8sOQw2yeE9cL3cK9g" target="_blank" rel="noopener">Sunn O))) record</a>.</p>
+
+        <h4>Why go out of your way and build something from scratch when perfectly usable things exist already?</h4>
+        <p>Because it's <a href="https://rateyourmusic.com/list/TheScientist/im_with_the_band_/" target="_blank" rel="noopener">my job</a>.</p>
+
+        <h4>Where can I get an account?</h4>
+        <p><a href="mailto:hi@scottsteinhardt.com">Email me</a>.</p>
+
+        <h4>Will you ever implement analytics, logs of what users read in their own private account, or any other things of which make the service less private?</h4>
+        <p>lol no</p>
+
+        <h4>Okay but what is Scott reading?</h4>
+        <p><a href="https://reader.ribbonhouse.nyc/u/ScottFromNY" target="_blank" rel="noopener">Check it here.</a></p>
+      </div>
+    </div>
+
+    <div id="manage-feeds-modal" class="modal hidden">
+      <div class="modal-header">
+        <h3>Manage feeds</h3>
+        <button class="modal-close" data-modal="manage-feeds-modal">✕</button>
+      </div>
+      <div id="manage-feeds-list" class="manage-feeds-list"></div>
+      <div class="manage-feeds-actions">
+        <span id="manage-selected-count" class="manage-count">0 selected</span>
+        <div class="manage-actions-right">
+          <input type="text" id="manage-folder-input" placeholder="Folder name" list="folders-datalist" class="manage-folder-input" />
+          <button class="btn btn-outline" id="manage-move-btn">Move</button>
+          <button class="btn btn-danger" id="manage-unsubscribe-btn">Unsubscribe</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <div id="article-context-menu" class="context-menu hidden">
+    <button id="ctx-mark-above">Mark above as read</button>
+    <button id="ctx-mark-below">Mark below as read</button>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

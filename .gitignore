@@ -1,0 +1,4 @@
+node_modules/
+.desloppify/
+.dev.vars
+*.local
