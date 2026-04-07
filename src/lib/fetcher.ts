@@ -146,8 +146,9 @@ async function fetchWithRewrites(feedUrl: string): Promise<{ response: Response;
     redirect: 'follow',
   })
 
-  // YouTube fallback to Invidious
-  if ((res.status === 404 || res.status === 403) && ytChannelId) {
+  // YouTube fallback to Invidious — also trigger if YouTube returns HTML instead of XML
+  const ytReturnedHtml = ytChannelId && /text\/html/i.test(res.headers.get('content-type') ?? '') && !/xml|atom/i.test(res.headers.get('content-type') ?? '')
+  if ((res.status === 404 || res.status === 403 || ytReturnedHtml) && ytChannelId) {
     await res.body?.cancel()
     const invidiousInstances = ['https://invidious.nerdvpn.de', 'https://invidious.protokolla.fi', 'https://invidious.materialio.us', 'https://inv.in.projectsegfau.lt']
     for (const instance of invidiousInstances) {
