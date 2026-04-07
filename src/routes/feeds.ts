@@ -37,7 +37,7 @@ app.post('/', async (c) => {
   try {
     const feedUrl = await discoverFeedUrl(url)
 
-    await c.env.DB.prepare('INSERT OR IGNORE INTO feeds (url, refresh_interval) VALUES (?, 3600)').bind(feedUrl).run()
+    await c.env.DB.prepare('INSERT OR IGNORE INTO feeds (url, refresh_interval) VALUES (?, 900)').bind(feedUrl).run()
     const feed = await c.env.DB.prepare('SELECT id FROM feeds WHERE url = ?').bind(feedUrl).first<{ id: number }>()
 
     await c.env.DB.prepare(
