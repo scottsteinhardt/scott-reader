@@ -1384,11 +1384,15 @@ function renderManageFeedsList() {
     const favicon = f.favicon_url ? `<img src="${esc(f.favicon_url)}" onerror="this.style.display='none'" />` : ''
     const folder = f.folder ? `<span class="feed-folder">${esc(f.folder)}</span>` : ''
     const checked = state.selectedFeedIds.has(f.id) ? 'checked' : ''
+    const lastFetched = f.last_fetched_at
+      ? `<span style="font-size:.75rem;color:${f.last_error ? 'var(--accent)' : 'var(--text-muted)'}; white-space:nowrap;flex-shrink:0" title="${f.last_error ? esc(f.last_error) : ''}">${f.last_error ? '⚠ ' : ''}${formatTime(f.last_fetched_at)}</span>`
+      : ''
     return `<label class="manage-feed-item">
       <input type="checkbox" ${checked} onchange="toggleManageFeed(${f.id}, this.checked)" />
       ${favicon}
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>
       ${folder}
+      ${lastFetched}
     </label>`
   }).join('')
 
