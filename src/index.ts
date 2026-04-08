@@ -65,20 +65,4 @@ app.get('*', async (c) => {
 
 export default {
   fetch: app.fetch,
-
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(fetch(
-      'https://api.github.com/repos/scottsteinhardt/scott-reader/actions/workflows/fetch-trigger.yml/dispatches',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'scott-reader-worker',
-        },
-        body: JSON.stringify({ ref: 'main' }),
-      }
-    ))
-  },
 }
