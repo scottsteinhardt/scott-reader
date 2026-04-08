@@ -112,6 +112,20 @@ export async function fetchOneFeed(db: D1Database, feedId: number, feedUrl: stri
 
     return { feedId, url: feedUrl, ok: true, newItems }
   } catch (err) {
+    // Piped fallback: last resort for YouTube channels when direct + Invidious both fail
+    const ytChannelId = extractYouTubeChannelId(feedUrl)
+    if (ytChannelId) {
+      try {
+        const parsed = await fetchFromPiped(ytChannelId)
+        if (parsed) {
+          await updateFeedMetadata(db, feedId, parsed, now)
+          fetchFavicon(db, feedId, parsed.siteUrl || feedUrl).catch(() => {})
+          const newItems = await processArticles(db, feedId, parsed.items, { skipFullContent })
+          return { feedId, url: feedUrl, ok: true, newItems }
+        }
+      } catch { /* ignore */ }
+    }
+
     const error = err instanceof Error ? err.message : String(err)
     await db.prepare(`
       UPDATE feeds SET last_error = ?, error_count = error_count + 1,
@@ -154,12 +168,12 @@ async function fetchWithRewrites(feedUrl: string): Promise<{ response: Response;
   const ytReturnedHtml = ytChannelId && /text\/html/i.test(res.headers.get('content-type') ?? '') && !/xml|atom/i.test(res.headers.get('content-type') ?? '')
   if ((res.status === 404 || res.status === 403 || ytReturnedHtml) && ytChannelId) {
     await res.body?.cancel()
-    const invidiousInstances = ['https://invidious.nerdvpn.de', 'https://invidious.protokolla.fi', 'https://invidious.materialio.us', 'https://inv.in.projectsegfau.lt']
+    const invidiousInstances = ['https://inv.nadeko.net', 'https://invidious.tiekoetter.com', 'https://invidious.lunar.icu', 'https://yewtu.be']
     for (const instance of invidiousInstances) {
       try {
         const invRes = await fetch(`${instance}/feed/channel/${ytChannelId}`, {
           headers: { 'User-Agent': headers['User-Agent'] },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT),
+          signal: AbortSignal.timeout(8000),
           redirect: 'follow',
         })
         const invCt = invRes.headers.get('content-type') ?? ''
@@ -274,6 +288,41 @@ async function fetchFavicon(db: D1Database, feedId: number, siteUrl: string): Pr
   if (res.ok) {
     await db.prepare('UPDATE feeds SET favicon_url = ? WHERE id = ?').bind(faviconUrl, feedId).run()
   }
+}
+
+// Fetch YouTube channel data from Piped (last-resort fallback when YouTube + Invidious both fail).
+// Piped fetches channels on demand from YouTube via their own scraping infrastructure.
+async function fetchFromPiped(ytChannelId: string): Promise<{ title: string; description: string; siteUrl: string; items: any[] } | null> {
+  const pipedInstances = ['https://api.piped.private.coffee']
+  for (const instance of pipedInstances) {
+    try {
+      const res = await fetch(`${instance}/channel/${ytChannelId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FreshRSS/1.21.0; +https://freshrss.org)' },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) continue
+      const ct = res.headers.get('content-type') ?? ''
+      if (!/json/i.test(ct)) { await res.body?.cancel(); continue }
+      const data = await res.json() as { name?: string; description?: string; relatedStreams?: any[] }
+      if (!data.name || !Array.isArray(data.relatedStreams)) continue
+      return {
+        title: data.name,
+        description: data.description || '',
+        siteUrl: `https://www.youtube.com/channel/${ytChannelId}`,
+        items: data.relatedStreams
+          .filter((v: any) => typeof v.url === 'string' && v.url.includes('/watch?v='))
+          .map((v: any) => ({
+            guid: `https://www.youtube.com${v.url}`,
+            title: v.title || '',
+            url: `https://www.youtube.com${v.url}`,
+            content: v.shortDescription || '',
+            author: v.uploaderName || '',
+            publishedAt: v.uploaded ? new Date(v.uploaded) : null,
+          })),
+      }
+    } catch { /* ignore */ }
+  }
+  return null
 }
 
 // Extract YouTube channel ID from feed URLs like:
