@@ -32,6 +32,10 @@ export async function scheduledFetch(db: D1Database): Promise<FetchResult[]> {
 // Returns { fetched: 1 } if a feed was processed, { fetched: 0 } if nothing was due.
 export async function fetchOneDue(db: D1Database): Promise<{ fetched: number; newItems: number }> {
   const now = Math.floor(Date.now() / 1000)
+  // Reset any feeds stuck in-progress (9999999999) for over 5 minutes — handles Worker crashes
+  await db.prepare(
+    `UPDATE feeds SET next_fetch_at = 0 WHERE next_fetch_at = 9999999999 AND last_fetched_at < ?`
+  ).bind(now - 300).run()
   // Atomically claim one feed by pushing next_fetch_at into the future before fetching.
   // This prevents concurrent callers from picking the same feed.
   const claimed = await db.prepare(`
