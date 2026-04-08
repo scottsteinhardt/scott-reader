@@ -57,14 +57,28 @@ export async function discoverFeedUrl(url: string): Promise<string> {
 
 async function looksLikeFeed(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, {
+    // Try HEAD first for speed
+    const head = await fetch(url, {
       method: 'HEAD',
       headers: { 'User-Agent': 'RSS Reader/1.0 (feed discovery)' },
       signal: AbortSignal.timeout(8000),
     })
+    if (head.ok) {
+      const ct = head.headers.get('content-type') ?? ''
+      if (/xml|rss|atom/i.test(ct)) return true
+    }
+
+    // Fall back to GET — some servers don't support HEAD or return wrong content-type
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'RSS Reader/1.0 (feed discovery)' },
+      signal: AbortSignal.timeout(10000),
+    })
     if (!res.ok) return false
     const ct = res.headers.get('content-type') ?? ''
-    return /xml|rss|atom/i.test(ct)
+    if (/xml|rss|atom/i.test(ct)) return true
+    // Check body for feed markers even if content-type is wrong
+    const text = await res.text()
+    return /^\s*<\?xml|<rss\s|<feed\s|<rdf:RDF\s/i.test(text.slice(0, 1000))
   } catch {
     return false
   }
