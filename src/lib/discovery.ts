@@ -1,7 +1,13 @@
+const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+function isYouTubeUrl(url: string): boolean {
+  return /youtube\.com/i.test(url)
+}
+
 /**
  * Attempt to find an RSS/Atom feed URL from any given URL.
  * Checks the URL directly, looks for link tags in HTML, and tries common paths.
- * 
+ *
  * @param url - The website or feed URL to check
  * @returns The discovered feed URL
  * @throws {Error} If no feed can be found or the network request fails
@@ -12,9 +18,10 @@ export async function discoverFeedUrl(url: string): Promise<string> {
 
   // Fetch the page and look for <link rel="alternate"> feed links
   let html: string
+  const ua = isYouTubeUrl(url) ? CHROME_UA : 'RSS Reader/1.0 (feed discovery)'
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'RSS Reader/1.0 (feed discovery)' },
+      headers: { 'User-Agent': ua },
       redirect: 'follow',
       signal: AbortSignal.timeout(10000),
     })
@@ -56,11 +63,12 @@ export async function discoverFeedUrl(url: string): Promise<string> {
 }
 
 async function looksLikeFeed(url: string): Promise<boolean> {
+  const ua = isYouTubeUrl(url) ? CHROME_UA : 'RSS Reader/1.0 (feed discovery)'
   try {
     // Try HEAD first for speed
     const head = await fetch(url, {
       method: 'HEAD',
-      headers: { 'User-Agent': 'RSS Reader/1.0 (feed discovery)' },
+      headers: { 'User-Agent': ua },
       signal: AbortSignal.timeout(8000),
     })
     if (head.ok) {
@@ -70,7 +78,7 @@ async function looksLikeFeed(url: string): Promise<boolean> {
 
     // Fall back to GET — some servers don't support HEAD or return wrong content-type
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'RSS Reader/1.0 (feed discovery)' },
+      headers: { 'User-Agent': ua },
       signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) return false

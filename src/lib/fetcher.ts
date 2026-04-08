@@ -164,9 +164,9 @@ async function fetchWithRewrites(feedUrl: string): Promise<{ response: Response;
     redirect: 'follow',
   })
 
-  // YouTube fallback to Invidious — also trigger if YouTube returns HTML instead of XML
+  // YouTube fallback to Invidious — trigger on any non-OK status or HTML content-type
   const ytReturnedHtml = ytChannelId && /text\/html/i.test(res.headers.get('content-type') ?? '') && !/xml|atom/i.test(res.headers.get('content-type') ?? '')
-  if ((res.status === 404 || res.status === 403 || ytReturnedHtml) && ytChannelId) {
+  if (ytChannelId && (!res.ok || ytReturnedHtml)) {
     await res.body?.cancel()
     const invidiousInstances = ['https://inv.nadeko.net', 'https://invidious.tiekoetter.com', 'https://invidious.lunar.icu', 'https://yewtu.be']
     for (const instance of invidiousInstances) {
