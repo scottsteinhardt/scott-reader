@@ -28,7 +28,7 @@ async function feverEndpoint(c: Context<{ Bindings: Env; Variables: Variables }>
 
   const base = { api_version: 3, auth: 1, last_refreshed_on_time: Math.floor(Date.now() / 1000) }
 
-  await handleMarkActions(c, user.id, body)
+  await handleMarkActions(c, user.id, body, sp)
 
   const resp: Record<string, unknown> = { ...base }
 
@@ -71,11 +71,13 @@ async function feverEndpoint(c: Context<{ Bindings: Env; Variables: Variables }>
 /**
  * Handles 'mark' actions for items, feeds, or groups.
  */
-async function handleMarkActions(c: Context<{ Bindings: Env }>, userId: number, body: Record<string, any>) {
-  const mark   = String(body.mark   ?? '')
-  const as_    = String(body.as     ?? '')
-  const markId = parseInt(String(body.id     ?? '0')) || 0
-  const before = parseInt(String(body.before ?? '0')) || 0
+async function handleMarkActions(c: Context<{ Bindings: Env }>, userId: number, body: Record<string, any>, sp: URLSearchParams) {
+  const mark   = String(body.mark   ?? sp.get('mark')   ?? '')
+  const as_    = String(body.as     ?? sp.get('as')      ?? '')
+  const markId = parseInt(String(body.id     ?? sp.get('id')     ?? '0')) || 0
+  const beforeRaw = parseInt(String(body.before ?? sp.get('before') ?? '0')) || 0
+  // Default to now if client omits before — marks all currently-visible articles as read
+  const before = beforeRaw > 0 ? beforeRaw : Math.floor(Date.now() / 1000)
 
   if (!mark || !as_) return
 
@@ -92,7 +94,7 @@ async function handleMarkActions(c: Context<{ Bindings: Env }>, userId: number, 
           updated_at = unixepoch()
       `).bind(userId, markId, isRead, isStarred, isRead, isRead, isStarred, isStarred).run()
     }
-  } else if (as_ === 'read' && before > 0 && (mark === 'feed' || mark === 'group')) {
+  } else if (as_ === 'read' && (mark === 'feed' || mark === 'group')) {
     if (mark === 'feed' && markId) {
       await markArticlesReadByCriteria(c.env.DB, userId, {
         feedId: markId,
