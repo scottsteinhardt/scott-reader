@@ -105,8 +105,8 @@ async function handleMarkActions(c: Context<{ Bindings: Env }>, userId: number, 
       if (markId > 0) {
         folderFilter = `AND uf.folder = (
           SELECT folder FROM (
-            SELECT DISTINCT folder, ROW_NUMBER() OVER (ORDER BY folder) as rn
-            FROM user_feeds WHERE user_id = ? AND folder IS NOT NULL
+            SELECT folder, ROW_NUMBER() OVER (ORDER BY folder) as rn
+            FROM (SELECT DISTINCT folder FROM user_feeds WHERE user_id = ? AND folder IS NOT NULL)
           ) WHERE rn = ?
         )`
         extraParams.push(userId, markId)
