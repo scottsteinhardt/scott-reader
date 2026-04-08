@@ -158,7 +158,8 @@ async function fetchWithRewrites(feedUrl: string): Promise<{ response: Response;
           signal: AbortSignal.timeout(FETCH_TIMEOUT),
           redirect: 'follow',
         })
-        if (invRes.ok) return { response: invRes, finalUrl: `${instance}/feed/channel/${ytChannelId}` }
+        const invCt = invRes.headers.get('content-type') ?? ''
+        if (invRes.ok && /xml|atom|rss/i.test(invCt)) return { response: invRes, finalUrl: `${instance}/feed/channel/${ytChannelId}` }
         await invRes.body?.cancel()
       } catch { /* ignore */ }
     }
