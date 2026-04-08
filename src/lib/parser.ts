@@ -193,14 +193,16 @@ function parseAtom(feed: Record<string, unknown>): ParsedFeed {
     const links = (entry.link ?? []) as unknown[]
     const url = getAtomLink(links)
     const guid = getText(entry.id) || url || getText(entry.title) || ''
+    const mediaGroup = entry['media:group'] as Record<string, unknown> | undefined
     const content = getText((entry.content as Record<string, unknown>)?.['#text'])
       || getText(entry.content)
       || getText(entry.summary)
+      || getText(mediaGroup?.['media:description'])
       || ''
     const authorObj = entry.author as Record<string, unknown> | undefined
     return {
       guid,
-      title: getText(entry.title),
+      title: getText(entry.title) || getText(mediaGroup?.['media:title']) || '',
       url,
       content,
       author: getText(authorObj?.name) || getText(entry.author) || '',
