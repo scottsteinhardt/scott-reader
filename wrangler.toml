@@ -17,5 +17,5 @@ database_name = "scott-reader"
 database_id = "12345e6a-8c28-431b-973b-9a2d79398179"
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/5 * * * *"]
 
