@@ -61,13 +61,13 @@ app.patch('/:id', async (c) => {
   const updates: string[] = []
   const params: unknown[] = []
 
-  if ('folder' in body) { updates.push('uf.folder = ?'); params.push(body.folder ?? null) }
-  if ('custom_title' in body) { updates.push('uf.custom_title = ?'); params.push(body.custom_title ?? null) }
+  if ('folder' in body) { updates.push('folder = ?'); params.push(body.folder ?? null) }
+  if ('custom_title' in body) { updates.push('custom_title = ?'); params.push(body.custom_title ?? null) }
 
   if (updates.length) {
     params.push(user.id, feedId)
     await c.env.DB.prepare(
-      `UPDATE user_feeds uf SET ${updates.join(', ')} WHERE uf.user_id = ? AND uf.feed_id = ?`
+      `UPDATE user_feeds SET ${updates.join(', ')} WHERE user_id = ? AND feed_id = ?`
     ).bind(...params).run()
   }
 
