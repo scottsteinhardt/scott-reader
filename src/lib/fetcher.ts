@@ -1,7 +1,8 @@
 import { parseFeed } from './parser'
 import { fetchFullContent } from './readability'
-import { applyFilters } from './filters'
+import { matchesFilter } from './filters'
 import { countWords } from '../core/utils'
+import type { UserFilter } from '../core/types/entities'
 
 const FETCH_TIMEOUT = 15000
 const FULL_CONTENT_THRESHOLD = 200 // fetch full content if article content is shorter than this
@@ -44,7 +45,7 @@ export async function fetchOneDue(db: D1Database): Promise<{ fetched: number; ne
     RETURNING id, url
   `).bind(now).first<{ id: number; url: string }>()
   if (!claimed) return { fetched: 0, newItems: 0 }
-  const result = await fetchOneFeed(db, claimed.id, claimed.url, { skipFullContent: false })
+  const result = await fetchOneFeed(db, claimed.id, claimed.url, { skipFullContent: true })
   return { fetched: 1, newItems: result.newItems }
 }
 
@@ -214,66 +215,121 @@ async function updateFeedMetadata(db: D1Database, feedId: number, parsed: any, n
     now, now, feedId).run()
 }
 
-async function processArticles(db: D1Database, feedId: number, items: any[], { skipFullContent = false } = {}): Promise<number> {
-  const subscribers = await db.prepare(
-    'SELECT user_id, folder FROM user_feeds WHERE feed_id = ?'
-  ).bind(feedId).all<{ user_id: number; folder: string | null }>()
+async function processArticles(db: D1Database, feedId: number, items: any[], { skipFullContent: _skipFullContent = false } = {}): Promise<number> {
+  const limitedItems = items.slice(0, 30)
+  if (limitedItems.length === 0) return 0
+
+  // Fetch subscribers and batch-check existing articles in one round trip each
+  const [subscribersResult, existingBatch] = await Promise.all([
+    db.prepare('SELECT user_id, folder FROM user_feeds WHERE feed_id = ?')
+      .bind(feedId).all<{ user_id: number; folder: string | null }>(),
+    db.batch(
+      limitedItems.map(item =>
+        db.prepare('SELECT id, content FROM articles WHERE feed_id = ? AND guid = ?')
+          .bind(feedId, item.guid)
+      )
+    ),
+  ])
+  const subscribers = subscribersResult.results
+
+  // Batch-fetch all user filters in one subrequest
+  const filtersByUser = new Map<number, UserFilter[]>()
+  if (subscribers.length > 0) {
+    const filterBatch = await db.batch(
+      subscribers.map(sub =>
+        db.prepare('SELECT * FROM user_filters WHERE user_id = ?').bind(sub.user_id)
+      )
+    )
+    subscribers.forEach((sub, i) => {
+      filtersByUser.set(sub.user_id, (filterBatch[i] as D1Result<UserFilter>).results ?? [])
+    })
+  }
 
   let newItems = 0
-  const limitedItems = items.slice(0, 30)
+  const contentUpdateStmts: D1PreparedStatement[] = []
+  const insertStmts: D1PreparedStatement[] = []
+  const insertItemIndices: number[] = []
+  const userArticleStmts: D1PreparedStatement[] = []
 
-  for (const item of limitedItems) {
-    const existing = await db.prepare(
-      'SELECT id, content FROM articles WHERE feed_id = ? AND guid = ?'
-    ).bind(feedId, item.guid).first<{ id: number; content: string | null }>()
-
-    let articleId: number
+  for (let i = 0; i < limitedItems.length; i++) {
+    const item = limitedItems[i]
+    const existing = (existingBatch[i] as D1Result<{ id: number; content: string | null }>).results?.[0] ?? null
 
     if (existing) {
-      articleId = existing.id
       if (item.content && (!existing.content || existing.content.length < item.content.length)) {
-        await db.prepare('UPDATE articles SET content = ?, word_count = ? WHERE id = ?')
-          .bind(item.content, countWords(item.content), existing.id).run()
+        contentUpdateStmts.push(
+          db.prepare('UPDATE articles SET content = ?, word_count = ? WHERE id = ?')
+            .bind(item.content, countWords(item.content), existing.id)
+        )
       }
+      collectFilterStmts(db, subscribers, filtersByUser, existing.id, item, feedId, userArticleStmts)
     } else {
-      let content = item.content
-      let fullContent: string | null = null
-      let wordCount = countWords(content)
-
-      if (!skipFullContent && item.url && content.length < FULL_CONTENT_THRESHOLD) {
-        const extracted = await fetchFullContent(item.url).catch(() => null)
-        if (extracted) {
-          fullContent = extracted.content
-          wordCount = extracted.wordCount
-        }
-      }
-
-      const result = await db.prepare(`
-        INSERT INTO articles (feed_id, guid, title, url, content, full_content, author, published_at, word_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(feed_id, guid) DO NOTHING
-      `).bind(feedId, item.guid, item.title || null, item.url || null,
-        content || null, fullContent, item.author || null,
-        item.publishedAt ? Math.floor(item.publishedAt.getTime() / 1000) : null,
-        wordCount).run()
-
-      if (result.meta.changes === 0) {
-        const existing2 = await db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?')
-          .bind(feedId, item.guid).first<{ id: number }>()
-        articleId = existing2?.id ?? 0
-      } else {
-        articleId = result.meta.last_row_id
-        newItems++
-      }
+      newItems++
+      insertItemIndices.push(i)
+      const content = item.content || null
+      insertStmts.push(
+        db.prepare(`
+          INSERT INTO articles (feed_id, guid, title, url, content, author, published_at, word_count)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(feed_id, guid) DO NOTHING
+          RETURNING id
+        `).bind(
+          feedId, item.guid, item.title || null, item.url || null,
+          content, item.author || null,
+          item.publishedAt ? Math.floor(item.publishedAt.getTime() / 1000) : null,
+          countWords(content ?? '')
+        )
+      )
     }
+  }
 
-    if (articleId) {
-      for (const sub of subscribers.results) {
-        await applyFilters(db, sub.user_id, articleId, item, feedId, sub.folder)
+  if (contentUpdateStmts.length > 0) await db.batch(contentUpdateStmts)
+
+  if (insertStmts.length > 0) {
+    const insertResults = await db.batch(insertStmts)
+    if (subscribers.length > 0) {
+      for (let j = 0; j < insertResults.length; j++) {
+        const articleId = (insertResults[j] as D1Result<{ id: number }>).results?.[0]?.id
+        if (!articleId) continue
+        collectFilterStmts(db, subscribers, filtersByUser, articleId, limitedItems[insertItemIndices[j]], feedId, userArticleStmts)
       }
     }
   }
+
+  if (userArticleStmts.length > 0) await db.batch(userArticleStmts)
+
   return newItems
+}
+
+function collectFilterStmts(
+  db: D1Database,
+  subscribers: { user_id: number; folder: string | null }[],
+  filtersByUser: Map<number, UserFilter[]>,
+  articleId: number,
+  item: any,
+  feedId: number,
+  stmts: D1PreparedStatement[]
+): void {
+  for (const sub of subscribers) {
+    const filters = filtersByUser.get(sub.user_id) ?? []
+    let markRead = false, markStarred = false
+    for (const f of filters) {
+      if (!matchesFilter(f, item, feedId, sub.folder)) continue
+      if (f.action === 'mark_read') markRead = true
+      if (f.action === 'star') markStarred = true
+    }
+    if (!markRead && !markStarred) continue
+    stmts.push(
+      db.prepare(`
+        INSERT INTO user_articles (user_id, article_id, is_read, is_starred)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, article_id) DO UPDATE SET
+          is_read = CASE WHEN ? THEN 1 ELSE is_read END,
+          is_starred = CASE WHEN ? THEN 1 ELSE is_starred END,
+          updated_at = unixepoch()
+      `).bind(sub.user_id, articleId, markRead ? 1 : 0, markStarred ? 1 : 0, markRead, markStarred)
+    )
+  }
 }
 
 async function fetchFavicon(db: D1Database, feedId: number, siteUrl: string): Promise<void> {

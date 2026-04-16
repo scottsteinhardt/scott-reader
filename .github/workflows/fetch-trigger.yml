@@ -2,12 +2,12 @@ name: Feed Fetch Trigger
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
   group: fetch-feeds
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   fetch:
